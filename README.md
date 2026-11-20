@@ -1,5 +1,7 @@
 # 🕸️ Home Assistant LAN Canary Honeypot & Active TCP Tarpit
 
+![Home Assistant LAN Canary & Active TCP Tarpit](ha_lan_canary_banner.jpg)
+
 A zero-dependency Home Assistant custom component and package that turns your Home Assistant box into an **internal LAN Canary Honeypot + Active TCP Tarpit** (with built-in webhook support for a secondary **Synology NAS OpenCanary** container).
 
 ---
