@@ -1,0 +1,121 @@
+# Home Assistant Package: LAN Canary Honeypot & Active TCP Tarpit
+# Save as: /config/packages/lan_canary_tarpit.yaml
+# And add `lan_canary:` to your /config/configuration.yaml
+
+input_number:
+  canary_hit_count:
+    name: "Canary Tripwire Hits"
+    min: 0
+    max: 99999
+    step: 1
+    initial: 0
+    mode: box
+    icon: "mdi:radar"
+
+input_text:
+  canary_last_event:
+    name: "Canary Last Probe"
+    max: 255
+    initial: "Armed & Tarpit Ready — 0 probes detected"
+    icon: "mdi:shield-bug-outline"
+
+  canary_active_ports:
+    name: "Canary Decoy Listeners"
+    max: 255
+    initial: "TCP Tarpit (10s Drip): FTP :2121 • SSH :2222 • Telnet :2323 • MySQL :3306 • VNC :5900 • DSM :8088"
+    icon: "mdi:lan-connect"
+
+input_boolean:
+  canary_intrusion_alert:
+    name: "LAN Canary Intrusion Alert"
+    icon: "mdi:shield-alert"
+    initial: false
+
+template:
+  - sensor:
+      - name: "Canary Tripwire Status"
+        unique_id: canary_tripwire_status
+        icon: >
+          {{ 'mdi:spider-web' if is_state('input_boolean.canary_intrusion_alert', 'on') else 'mdi:shield-check' }}
+        state: >
+          {% set hits = states('input_number.canary_hit_count') | int(0) %}
+          {% if is_state('input_boolean.canary_intrusion_alert', 'on') %}
+            🕸️ TARPITTED INTRUDER ({{ hits }} hits) — {{ states('input_text.canary_last_event') }}
+          {% else %}
+            Armed & Tarpit Active (6 Decoy Ports + OpenCanary Webhook • {{ hits }} hits)
+          {% endif %}
+
+automation:
+  - id: opencanary_webhook_and_tripwire_alert
+    alias: "Security - LAN Canary Tripwire & OpenCanary Critical Push"
+    mode: parallel
+    trigger:
+      - platform: webhook
+        webhook_id: opencanary_intrusion_alert
+        allowed_methods:
+          - POST
+          - GET
+        local_only: false
+        id: "webhook_hit"
+      - platform: state
+        entity_id: input_boolean.canary_intrusion_alert
+        from: "off"
+        to: "on"
+        id: "tripwire_hit"
+      - platform: state
+        entity_id: input_boolean.canary_intrusion_alert
+        from: "on"
+        to: "off"
+        id: "tripwire_reset"
+    action:
+      - if:
+          - condition: trigger
+            id: "tripwire_reset"
+        then:
+          - service: lan_canary.reset_canary
+            data: {}
+          - stop: "Canary tarpit released and reset"
+      - if:
+          - condition: trigger
+            id: "webhook_hit"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.canary_last_event
+            data:
+              value: >
+                {% set d = trigger.json if trigger.json is defined else {} %}
+                {{ now().strftime('%H:%M:%S') }} — {{ d.get('src_host', 'OpenCanary NAS') }} probed {{ d.get('dst_port', 'Decoy Port') }} ({{ d.get('logtype', 'Alert') }})
+          - service: input_number.increment
+            target:
+              entity_id: input_number.canary_hit_count
+          - service: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.canary_intrusion_alert
+      # Replace notify.mobile_app_iphone with your own Companion App notify service
+      - service: notify.mobile_app_iphone
+        data:
+          title: "🚨 LAN CANARY TARPIT TRIGGERED"
+          message: >
+            Internal honeypot probe trapped on LAN: {{ states('input_text.canary_last_event') }}
+          data:
+            push:
+              sound:
+                name: "default"
+                critical: 1
+                volume: 1.0
+            actions:
+              - action: "CLEAR_CANARY_ALERT"
+                title: "✅ Acknowledge & Release Tarpit"
+
+  - id: canary_ios_action_handler
+    alias: "Security - Handle iPhone Lock-Screen Canary Reset"
+    mode: single
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "CLEAR_CANARY_ALERT"
+    action:
+      - service: lan_canary.reset_canary
+        data: {}
