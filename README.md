@@ -6,6 +6,43 @@ A zero-dependency Home Assistant custom component and package that turns your Ho
 
 ---
 
+## Despre acest fork (RO)
+
+Fork din [robainbinder/ha-lan-canary-tarpit](https://github.com/robainbinder/ha-lan-canary-tarpit),
+adaptat pentru o retea de acasa cu Home Assistant OS. Ce e diferit fata de original:
+
+1. **Anti-spam pe notificari** — originalul trimite o notificare critica la *fiecare* pachet,
+   deci un scan de 6 porturi = 6 alerte, iar un `nmap` cu reincercari zeci. Aici fiecare IP
+   sursa primeste o singura notificare per fereastra `cooldown` (implicit 300 s); toate sondele
+   sunt in continuare numarate si scrise in `input_text`.
+2. **Lista alba de IP-uri** (`ignore_ips`) — pentru scanerele proprii (monitorizare, laptopul tau).
+   Conexiunea lor e inchisa imediat, fara alerta si fara capcana.
+3. **Eveniment HA in loc de truc cu input_boolean** — componenta emite `lan_canary_hit` cu
+   `ip`, `host`, `port`, `service`, `payload`, `trapped`, `notify`. Originalul stingea si
+   reaprindea `input_boolean` ca sa re-declanseze automatizarea.
+4. **Configurabil din YAML** (`cooldown`, `ignore_ips`, `ports`, `tarpit_minutes`, `max_sockets`),
+   reverse-DNS cu timeout, inchidere curata a serverelor la oprirea HA, texte si loguri in romana.
+
+Capcana in sine (porturile momeala, bannerele false Synology, picurarea pe protocol) e cea din
+original — acolo e ideea buna.
+
+### Instalare
+
+1. HACS / Marketplace -> repo custom `blitzu/ha-lan-canary-tarpit`, categoria *Integration* -> Download.
+2. In `configuration.yaml`:
+
+   ```yaml
+   lan_canary:
+     cooldown: 300
+     ignore_ips: []
+   ```
+3. Helperii (`input_boolean.canary_alerta_intruziune`, `input_text.canary_ultimul_eveniment`,
+   `input_number.canary_numar_hituri`) + automatizarile: fie din interfata, fie cu pachetul
+   din `packages/lan_canary_tarpit.yaml`.
+4. Restart HA, apoi test din alt calculator din LAN: `nc -v <IP_HA> 2222`.
+
+---
+
 ## 💡 Why Build This? (The "Flat Mesh Wi-Fi" Blind Spot)
 
 Most home networks use consumer mesh routers (AmpliFi, Eero, Google Nest, Orbi) where every laptop, phone, smart fridge, dishwasher, printer, and IoT device shares a single flat `/24` subnet.

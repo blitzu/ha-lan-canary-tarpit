@@ -1,10 +1,16 @@
-# Home Assistant Package: LAN Canary Honeypot & Active TCP Tarpit
-# Save as: /config/packages/lan_canary_tarpit.yaml
-# And add `lan_canary:` to your /config/configuration.yaml
+# Home Assistant - LAN Canary: honeypot intern + capcana TCP activa
+# Varianta YAML (alternativa la helperii/automatizarile din interfata).
+# Se pune in /config/packages/lan_canary_tarpit.yaml, cu
+#   homeassistant:
+#     packages: !include_dir_named packages
+# in configuration.yaml, plus:
+#   lan_canary:
+#     cooldown: 300
+#     ignore_ips: []
 
 input_number:
-  canary_hit_count:
-    name: "Canary Tripwire Hits"
+  canary_numar_hituri:
+    name: "Canary - numar de sonde"
     min: 0
     max: 99999
     step: 1
@@ -13,109 +19,111 @@ input_number:
     icon: "mdi:radar"
 
 input_text:
-  canary_last_event:
-    name: "Canary Last Probe"
+  canary_ultimul_eveniment:
+    name: "Canary - ultima sonda"
     max: 255
-    initial: "Armed & Tarpit Ready — 0 probes detected"
+    initial: "Armat, capcana pregatita - 0 sonde"
     icon: "mdi:shield-bug-outline"
 
-  canary_active_ports:
-    name: "Canary Decoy Listeners"
+  canary_porturi_active:
+    name: "Canary - porturi momeala"
     max: 255
-    initial: "TCP Tarpit (10s Drip): FTP :2121 • SSH :2222 • Telnet :2323 • MySQL :3306 • VNC :5900 • DSM :8088"
+    initial: "Capcana TCP (picurare 10s): FTP :2121 - SSH :2222 - Telnet :2323 - MySQL :3306 - VNC :5900 - DSM :8088"
     icon: "mdi:lan-connect"
 
 input_boolean:
-  canary_intrusion_alert:
-    name: "LAN Canary Intrusion Alert"
+  canary_alerta_intruziune:
+    name: "Canary - alerta intruziune"
     icon: "mdi:shield-alert"
-    initial: false
 
 template:
   - sensor:
-      - name: "Canary Tripwire Status"
-        unique_id: canary_tripwire_status
+      - name: "Canary - stare capcana"
+        unique_id: canary_stare_capcana
         icon: >
-          {{ 'mdi:spider-web' if is_state('input_boolean.canary_intrusion_alert', 'on') else 'mdi:shield-check' }}
+          {{ 'mdi:spider-web' if is_state('input_boolean.canary_alerta_intruziune', 'on') else 'mdi:shield-check' }}
         state: >
-          {% set hits = states('input_number.canary_hit_count') | int(0) %}
-          {% if is_state('input_boolean.canary_intrusion_alert', 'on') %}
-            🕸️ TARPITTED INTRUDER ({{ hits }} hits) — {{ states('input_text.canary_last_event') }}
+          {% set hits = states('input_number.canary_numar_hituri') | int(0) %}
+          {% if is_state('input_boolean.canary_alerta_intruziune', 'on') %}
+            INTRUS PRINS ({{ hits }} sonde) - {{ states('input_text.canary_ultimul_eveniment') }}
           {% else %}
-            Armed & Tarpit Active (6 Decoy Ports + OpenCanary Webhook • {{ hits }} hits)
+            Armat (6 porturi momeala - {{ hits }} sonde)
           {% endif %}
 
 automation:
-  - id: opencanary_webhook_and_tripwire_alert
-    alias: "Security - LAN Canary Tripwire & OpenCanary Critical Push"
-    mode: parallel
-    trigger:
-      - platform: webhook
-        webhook_id: opencanary_intrusion_alert
-        allowed_methods:
-          - POST
-          - GET
-        local_only: false
-        id: "webhook_hit"
-      - platform: state
-        entity_id: input_boolean.canary_intrusion_alert
-        from: "off"
-        to: "on"
-        id: "tripwire_hit"
-      - platform: state
-        entity_id: input_boolean.canary_intrusion_alert
-        from: "on"
-        to: "off"
-        id: "tripwire_reset"
-    action:
-      - if:
-          - condition: trigger
-            id: "tripwire_reset"
-        then:
-          - service: lan_canary.reset_canary
-            data: {}
-          - stop: "Canary tarpit released and reset"
-      - if:
-          - condition: trigger
-            id: "webhook_hit"
-        then:
-          - service: input_text.set_value
-            target:
-              entity_id: input_text.canary_last_event
-            data:
-              value: >
-                {% set d = trigger.json if trigger.json is defined else {} %}
-                {{ now().strftime('%H:%M:%S') }} — {{ d.get('src_host', 'OpenCanary NAS') }} probed {{ d.get('dst_port', 'Decoy Port') }} ({{ d.get('logtype', 'Alert') }})
-          - service: input_number.increment
-            target:
-              entity_id: input_number.canary_hit_count
-          - service: input_boolean.turn_on
-            target:
-              entity_id: input_boolean.canary_intrusion_alert
-      # Replace notify.mobile_app_iphone with your own Companion App notify service
-      - service: notify.mobile_app_iphone
+  - id: lan_canary_alerta
+    alias: "Securitate - LAN Canary: sonda prinsa in capcana"
+    mode: queued
+    max: 10
+    triggers:
+      - trigger: event
+        event_type: lan_canary_hit
+        id: capcana
+      - trigger: webhook
+        webhook_id: PUNE_AICI_UN_ID_DE_WEBHOOK
+        allowed_methods: [POST, GET]
+        local_only: true
+        id: webhook
+    conditions: []
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: webhook
+            sequence:
+              - action: input_text.set_value
+                target:
+                  entity_id: input_text.canary_ultimul_eveniment
+                data:
+                  value: >
+                    {% set d = trigger.json if trigger.json is defined else {} %}
+                    {{ now().strftime('%H:%M:%S') }} - {{ d.get('src_host', 'canary extern') }}
+                    a sondat {{ d.get('dst_port', 'un port momeala') }} ({{ d.get('logtype', 'alerta') }})
+              - action: input_number.increment
+                target:
+                  entity_id: input_number.canary_numar_hituri
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.canary_alerta_intruziune
+          - conditions:
+              - condition: trigger
+                id: capcana
+              - condition: template
+                value_template: "{{ not trigger.event.data.notify }}"
+            sequence:
+              - stop: "Acelasi IP, inca in fereastra de anti-spam"
+      - action: notify.mobile_app_telefonul_meu
         data:
-          title: "🚨 LAN CANARY TARPIT TRIGGERED"
-          message: >
-            Internal honeypot probe trapped on LAN: {{ states('input_text.canary_last_event') }}
+          title: "SCANARE IN RETEAUA LOCALA"
+          message: "{{ states('input_text.canary_ultimul_eveniment') }}"
           data:
             push:
               sound:
-                name: "default"
+                name: default
                 critical: 1
                 volume: 1.0
             actions:
-              - action: "CLEAR_CANARY_ALERT"
-                title: "✅ Acknowledge & Release Tarpit"
+              - action: CLEAR_CANARY_ALERT
+                title: "Confirm si eliberez capcana"
 
-  - id: canary_ios_action_handler
-    alias: "Security - Handle iPhone Lock-Screen Canary Reset"
+  - id: lan_canary_eliberare_din_notificare
+    alias: "Securitate - LAN Canary: eliberare din notificare"
     mode: single
-    trigger:
-      - platform: event
+    triggers:
+      - trigger: event
         event_type: mobile_app_notification_action
         event_data:
-          action: "CLEAR_CANARY_ALERT"
-    action:
-      - service: lan_canary.reset_canary
-        data: {}
+          action: CLEAR_CANARY_ALERT
+    actions:
+      - action: lan_canary.reset_canary
+
+  - id: lan_canary_eliberare_din_buton
+    alias: "Securitate - LAN Canary: eliberare cand sting alerta"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.canary_alerta_intruziune
+        from: "on"
+        to: "off"
+    actions:
+      - action: lan_canary.reset_canary
