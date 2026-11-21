@@ -1,0 +1,9 @@
+[Unit]
+Description=Autoverificare + puls catre Home Assistant
+
+[Service]
+Type=oneshot
+Environment=CANARY_CONFIG=/etc/canary/config.json
+ExecStart=/usr/bin/python3 -u /opt/canary/canary-healthcheck.py
+# codul 1 = "degradat", nu "serviciu picat"
+SuccessExitStatus=0 1

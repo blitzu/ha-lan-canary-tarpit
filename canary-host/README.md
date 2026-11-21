@@ -121,6 +121,29 @@ din `webhook_url`. JSON-ul primit:
 `suppressed` = cate sonde de la acelasi IP au fost inghitite de anti-spam
 de la ultima alerta.
 
+## Ca sa nu moara in liniste
+
+Un honeypot mort tace exact ca unul neatins, deci are nevoie de puls, nu doar de
+`Restart=always`. Trei straturi:
+
+1. **systemd + `onboot`** - `canaryd`, `cowrie` si `cowrie-forward` au `Restart=always`,
+   iar containerul porneste la boot-ul gazdei. Acopera crash-urile si repornirile.
+2. **Autoverificare la 5 minute** (`canary-healthcheck.py` + `canary-healthcheck.timer`):
+   verifica serviciile *si* se conecteaza local pe fiecare port momeala (plus bannerul
+   SSH si promptul Telnet ale lui Cowrie), apoi trimite un puls pe `heartbeat_url`.
+   `127.0.0.1` e in `ignore_nets`, deci verificarea nu se alerteaza singura. Daca un
+   port nu raspunde, pulsul pleaca cu `"status": "degradat"` si lista porturilor moarte.
+3. **Dead-man's switch in Home Assistant**: fiecare puls scrie `input_datetime` si
+   rearmeaza un `timer` de 15 minute. Daca pulsul nu mai vine, `timer.finished`
+   declanseaza o notificare critica ("capcana nu mai raspunde"), se repeta la ~45 min
+   si se rearmeaza si la pornirea HA, ca o capcana moarta inainte de un restart sa nu
+   treaca neobservata.
+
+Asa afli si cand moare tot hostul (nu mai vine puls), si cand moare doar o parte
+(pulsul spune `degradat`). Testat prin oprirea lui Cowrie - pulsul a raportat imediat
+`porturi_moarte: [22, 23]`, `servicii_moarte: ["cowrie"]` - si prin oprirea pulsului,
+caz in care HA a sunat singur.
+
 ## Capcane de care sa ții cont
 
 - **Te alertezi singur prin SSDP**: dupa ce te anunti, televizoarele, PC-urile

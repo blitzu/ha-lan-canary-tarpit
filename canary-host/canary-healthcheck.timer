@@ -1,0 +1,11 @@
+[Unit]
+Description=Ruleaza autoverificarea canary la 5 minute
+
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=5min
+AccuracySec=15s
+Unit=canary-healthcheck.service
+
+[Install]
+WantedBy=timers.target

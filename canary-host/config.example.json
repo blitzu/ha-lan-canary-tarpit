@@ -36,5 +36,6 @@
     "8080": "http",
     "9200": "elastic",
     "27017": "mongo"
-  }
+  },
+  "heartbeat_url": "http://<IP_HOME_ASSISTANT>:8123/api/webhook/<ID_WEBHOOK_PULS>"
 }
