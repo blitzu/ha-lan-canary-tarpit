@@ -1,0 +1,6 @@
+# /opt/cowrie/etc/userdb.txt
+# Lasam botii sa "intre", ca sa le vedem comenzile.
+# Format: utilizator:nefolosit:parola  ('*' = orice, '!' in fata = respinge)
+root:x:*
+admin:x:*
+*:x:*

@@ -60,6 +60,49 @@ systemctl daemon-reload
 systemctl enable --now avahi-daemon canaryd
 ```
 
+## Cowrie pe 22 si 23 (shell fals)
+
+Porturile SSH si Telnet sunt date lui [Cowrie](https://github.com/cowrie/cowrie):
+acolo nu vrem doar sa agatam scanerul, vrem sa-l lasam sa creada ca a intrat.
+`canaryd` renunta la 22 si 23 (le scoți din `ports` in config), restul porturilor
+rămân ale lui.
+
+Ce da Cowrie in plus: accepta login-ul (`userdb.txt` cu `*` = orice parola),
+prezinta un shell fals cu prompt `root@DiskStation:~#`, raspunde la `uname -a`,
+`cat /proc/cpuinfo`, `wget`..., **inregistreaza fiecare comanda**, descarca si
+pastreaza fisierele pe care botul incearca sa le aduca (`var/lib/cowrie/downloads`,
+cu sha256) si salveaza sesiunea ca inregistrare TTY, care se poate reda:
+
+```bash
+/opt/cowrie/cowrie-env/bin/python -m cowrie.scripts.playlog var/lib/cowrie/tty/<hash>
+```
+
+Instalare (Debian 13, in containerul canary):
+
+```bash
+apt-get install -y git python3-venv python3-dev libffi-dev
+adduser --disabled-password --gecos "" --home /opt/cowrie cowrie
+git clone --depth 1 https://github.com/cowrie/cowrie.git /opt/cowrie   # sau clona si copiaza
+runuser -u cowrie -- bash -c 'cd /opt/cowrie && python3 -m venv cowrie-env &&
+  source cowrie-env/bin/activate && pip install -r requirements.txt && pip install -e .'
+install -m644 cowrie.cfg  /opt/cowrie/etc/cowrie.cfg
+install -m644 userdb.txt  /opt/cowrie/etc/userdb.txt
+install -m644 cowrie.service /etc/systemd/system/
+install -m755 cowrie-forward.py /opt/canary/
+install -m644 cowrie-forward.service /etc/systemd/system/
+install -m644 logrotate.cowrie /etc/logrotate.d/cowrie
+systemctl daemon-reload && systemctl enable --now cowrie cowrie-forward
+```
+
+`cowrie-forward.py` citeste la coada `cowrie.json` si trimite in HA, pe acelasi
+webhook, cu **clase separate de anti-spam**: conectare (fereastra `cooldown`),
+parola/comenzi (60 s) si **fisier descarcat, care are clasa proprie** - altfel
+alerta cu URL-ul malware-ului ar fi inghitita de alerta de login din aceeasi sesiune.
+O sesiune completa de bot = 2-3 notificari, iar tot restul e in `cowrie.json`.
+
+Nu ruleaza ca root: unitatea systemd ii da doar `CAP_NET_BIND_SERVICE` ca sa poata
+lega 22 si 23.
+
 ## Partea de Home Assistant
 
 Automatizare cu declansator `webhook` (`local_only: true`) pe `webhook_id`-ul

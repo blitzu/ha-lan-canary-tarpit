@@ -1,0 +1,22 @@
+[Unit]
+Description=Cowrie - honeypot SSH/Telnet cu shell fals
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cowrie
+Group=cowrie
+WorkingDirectory=/opt/cowrie
+Environment=PYTHONPATH=/opt/cowrie/src
+Environment=COWRIE_STDOUT=yes
+ExecStart=/opt/cowrie/cowrie-env/bin/twistd -n --umask=0022 --pidfile= -l - cowrie
+Restart=always
+RestartSec=5
+# ca sa poata lega 22 si 23 fara sa ruleze ca root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

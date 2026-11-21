@@ -1,0 +1,16 @@
+[Unit]
+Description=Trimite evenimentele Cowrie in Home Assistant
+After=cowrie.service
+Wants=cowrie.service
+
+[Service]
+Type=simple
+Environment=CANARY_CONFIG=/etc/canary/config.json
+Environment=COWRIE_JSON=/opt/cowrie/var/log/cowrie/cowrie.json
+ExecStart=/usr/bin/python3 -u /opt/canary/cowrie-forward.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
