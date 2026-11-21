@@ -96,6 +96,11 @@ SERVICE_NAMES = {
     "smtp": "SMTP (releu deschis)",
 }
 
+try:  # rezerva pe Telegram, pentru cand HA nu raspunde (opționala)
+    import telegram_fallback as telegram
+except Exception:  # noqa: BLE001
+    telegram = None
+
 log = logging.getLogger("canaryd")
 
 
@@ -295,10 +300,36 @@ class Canary:
         try:
             loop = asyncio.get_running_loop()
             status = await loop.run_in_executor(None, _post)
-            if status >= 300:
-                log.error("Webhook HA a raspuns %s", status)
+            if status < 300:
+                return
+            log.error("Webhook HA a raspuns %s", status)
         except Exception as err:
             log.error("Webhook HA a eșuat: %s", err)
+        await self.rezerva_telegram(record)
+
+    async def rezerva_telegram(self, record: dict) -> None:
+        """HA nu a primit alerta -> o trimitem direct pe Telegram."""
+        if telegram is None or not telegram.disponibil():
+            return
+        creds = record.get("creds") or []
+        text = (
+            "🕸️ CANARY (HA nu raspunde)\n"
+            f"{record.get('src_ip')} ({record.get('src_host')}) -> "
+            f"{record.get('service')} :{record.get('port')}\n"
+            f"{record.get('note', '')}"
+        )
+        if creds:
+            text += "\nA incercat: " + ", ".join(
+                f"{c.get('user')} / {c.get('pass')}" for c in creds
+            )
+        loop = asyncio.get_running_loop()
+        ok, motiv = await loop.run_in_executor(
+            None,
+            lambda: telegram.trimite(
+                text, cheie=f"alerta:{record.get('src_ip')}", interval=self.cooldown
+            ),
+        )
+        log.warning("rezerva Telegram: %s (%s)", "trimis" if ok else "netrimis", motiv)
 
     # ---------------- capcana ----------------
 

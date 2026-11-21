@@ -144,6 +144,28 @@ Asa afli si cand moare tot hostul (nu mai vine puls), si cand moare doar o parte
 `porturi_moarte: [22, 23]`, `servicii_moarte: ["cowrie"]` - si prin oprirea pulsului,
 caz in care HA a sunat singur.
 
+### Rezerva pe Telegram (daca pica si HA)
+
+Daca Home Assistant nu raspunde, alertele s-ar pierde: tocmai atunci e utila o a doua
+cale. `telegram_fallback.py` trimite direct prin API-ul Telegram, dar **doar cand
+webhook-ul catre HA a eșuat**:
+
+- `canaryd` si `cowrie-forward` incearca Telegram pentru alerta care n-a ajuns;
+- `canary-healthcheck.py` anunta, o data pe ora, ca "HA nu primeste pulsul" - adica
+  dead-man's switch-ul din HA nu mai poate ajuta, pentru ca HA e cel picat.
+
+Tokenul NU sta in acest repo si nici in config: se pune separat, de mana, in
+`/etc/canary/telegram.json` cu drepturi `0600`:
+
+```json
+{"bot_token": "...", "chat_id": "..."}
+```
+
+Fara fisier, rezerva e dezactivata si totul merge ca inainte. Test:
+`python3 /opt/canary/telegram_fallback.py --test`. Tokenul nu ajunge niciodata in
+jurnal (erorile sunt curatate inainte de logare), iar rezerva are propriul anti-spam
+pe cheie, ca o cadere lunga de HA sa nu umple Telegramul.
+
 ## Capcane de care sa ții cont
 
 - **Te alertezi singur prin SSDP**: dupa ce te anunti, televizoarele, PC-urile

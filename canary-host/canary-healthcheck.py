@@ -109,7 +109,28 @@ def main() -> int:
     }
     print(json.dumps(puls, ensure_ascii=False))
 
-    trimite(c.get("heartbeat_url", ""), puls)
+    pulsul_a_ajuns = trimite(c.get("heartbeat_url", ""), puls)
+
+    # Daca HA nu primeste pulsul, cronometrul de veghe de acolo nu ne mai poate
+    # ajuta (poate HA e cel picat). Atunci anuntam direct pe Telegram, o data pe ora.
+    if not pulsul_a_ajuns:
+        try:
+            import telegram_fallback as telegram
+        except Exception:
+            telegram = None
+        if telegram is not None and telegram.disponibil():
+            text = (
+                "⚠️ CANARY: Home Assistant nu primeste pulsul\n"
+                f"Capcana de pe {c.get('ip', '?')} e {puls['status']} "
+                f"({puls['porturi_ok']}/{puls['porturi_total']} porturi)."
+            )
+            if porturi_moarte or servicii_moarte:
+                text += (
+                    f"\nPorturi moarte: {porturi_moarte or '-'}"
+                    f"\nServicii picate: {servicii_moarte or '-'}"
+                )
+            ok, motiv = telegram.trimite(text, cheie="ha_fara_puls", interval=3600)
+            print("rezerva Telegram: %s (%s)" % ("trimis" if ok else "netrimis", motiv))
 
     if not ok:
         # Nu trimitem si pe webhook-ul de intruziune: pulsul duce deja `status`

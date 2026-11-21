@@ -30,6 +30,11 @@ COWRIE_LOG = os.environ.get(
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
 )
+try:  # rezerva pe Telegram, pentru cand HA nu raspunde (opționala)
+    import telegram_fallback as telegram
+except Exception:  # noqa: BLE001
+    telegram = None
+
 log = logging.getLogger("cowrie-forward")
 
 INTERESANTE = {
@@ -129,6 +134,7 @@ class Forwarder:
         if not self.webhook:
             return
         body = json.dumps(record, ensure_ascii=False).encode()
+        ajuns = False
         try:
             req = urllib.request.Request(
                 self.webhook,
@@ -140,10 +146,27 @@ class Forwarder:
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=6) as resp:
-                if resp.status >= 300:
+                ajuns = resp.status < 300
+                if not ajuns:
                     log.error("webhook HA a raspuns %s", resp.status)
         except Exception as err:
             log.error("webhook HA a eșuat: %s", err)
+
+        if not ajuns and telegram is not None and telegram.disponibil():
+            text = (
+                "🕸️ CANARY / shell fals (HA nu raspunde)\n"
+                f"{ip} ({record['src_host']}) -> {record['service']} :{port}\n{note}"
+            )
+            if creds:
+                text += "\nA incercat: " + ", ".join(
+                    f"{c.get('user')} / {c.get('pass')}" for c in creds
+                )
+            ok, motiv = telegram.trimite(
+                text, cheie=f"cowrie:{ip}", interval=self.cooldown
+            )
+            log.warning(
+                "rezerva Telegram: %s (%s)", "trimis" if ok else "netrimis", motiv
+            )
 
     # ---------- evenimente ----------
 

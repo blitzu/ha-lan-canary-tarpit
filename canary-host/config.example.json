@@ -37,5 +37,6 @@
     "9200": "elastic",
     "27017": "mongo"
   },
-  "heartbeat_url": "http://<IP_HOME_ASSISTANT>:8123/api/webhook/<ID_WEBHOOK_PULS>"
+  "heartbeat_url": "http://<IP_HOME_ASSISTANT>:8123/api/webhook/<ID_WEBHOOK_PULS>",
+  "telegram_file": "/etc/canary/telegram.json"
 }
