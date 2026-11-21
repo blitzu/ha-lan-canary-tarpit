@@ -1,6 +1,22 @@
 # /opt/cowrie/etc/userdb.txt
-# Lasam botii sa "intre", ca sa le vedem comenzile.
-# Format: utilizator:nefolosit:parola  ('*' = orice, '!' in fata = respinge)
-root:x:*
-admin:x:*
-*:x:*
+# ATENTIE: Cowrie citeste acest fisier strict ca ASCII (read_text(encoding="ascii")).
+# Un singur caracter cu diacritice => fisierul nu se incarca si TOATE loginurile
+# sunt respinse. Fara diacritice aici.
+#
+# Lista scurta de parole acceptate: botii cu dictionar clasic intra, restul sunt
+# respinsi. Format: utilizator:nefolosit:parola. Se opreste la prima potrivire;
+# ce nu se potriveste cu nimic = login respins.
+
+root:x:admin
+root:x:synology
+root:x:123456
+root:x:1234
+root:x:password
+root:x:root
+root:x:diskstation
+
+admin:x:admin
+admin:x:synology
+admin:x:admin123
+admin:x:123456
+admin:x:password

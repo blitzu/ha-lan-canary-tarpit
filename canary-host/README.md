@@ -67,7 +67,10 @@ acolo nu vrem doar sa agatam scanerul, vrem sa-l lasam sa creada ca a intrat.
 `canaryd` renunta la 22 si 23 (le scoți din `ports` in config), restul porturilor
 rămân ale lui.
 
-Ce da Cowrie in plus: accepta login-ul (`userdb.txt` cu `*` = orice parola),
+Ce da Cowrie in plus: accepta login-ul doar pentru o **lista scurta de parole**
+(`userdb.txt`: `root`/`admin` cu `admin`, `synology`, `123456`, `password`...), deci
+botii cu dictionar clasic intra, iar restul sunt respinsi - un om care incearca o parola
+inventata vede "Login incorrect", ca pe un NAS adevarat. Mai departe:
 prezinta un shell fals cu prompt `root@DiskStation:~#`, raspunde la `uname -a`,
 `cat /proc/cpuinfo`, `wget`..., **inregistreaza fiecare comanda**, descarca si
 pastreaza fisierele pe care botul incearca sa le aduca (`var/lib/cowrie/downloads`,
@@ -127,5 +130,9 @@ de la ultima alerta.
   pune-i IP-ul (sau subreteaua VPN-ului) in `ignore_nets`, altfel suna la fiecare verificare.
 - **Home Assistant va "descoperi" NAS-ul** prin SSDP si va propune integrarea
   Synology DSM. Ignora sugestia.
+- **`userdb.txt` se citeste strict ca ASCII** (`read_text(encoding="ascii")` in
+  `src/cowrie/core/auth.py`). Un singur caracter cu diacritice intr-un comentariu si
+  fisierul nu se incarca, iar **toate** loginurile sunt respinse, fara nicio eroare
+  vizibila in jurnal. Scrie-l fara diacritice.
 - NetBIOS raspunde **doar** pentru numele propriu, niciodata pentru alte nume:
   altfel ai deturna rezolvarea de nume in toata reteaua.
