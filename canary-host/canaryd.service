@@ -1,0 +1,15 @@
+[Unit]
+Description=canaryd - NAS fals (honeypot + capcana TCP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=CANARY_CONFIG=/etc/canary/config.json
+ExecStart=/usr/bin/python3 -u /opt/canary/canaryd.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

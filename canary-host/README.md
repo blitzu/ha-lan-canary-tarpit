@@ -1,0 +1,88 @@
+# canaryd - NAS fals pe host dedicat
+
+Varianta "miere mai atractiva" a capcanei din acest repo: in loc de porturi
+nestandard (`:2121`, `:2222`) pe cutia de Home Assistant, un **host dedicat**
+cu IP propriu, care nu ruleaza nimic real si se da drept un NAS Synology
+pe **porturile adevarate**.
+
+Orice pachet catre acest IP este, prin definitie, o scanare: nimeni n-are
+treaba cu el. Si, in plus, **se lauda singur in retea**, ca sa fie gasit
+inainte de celelalte aparate.
+
+## Ce face
+
+| Ce | Detalii |
+| --- | --- |
+| 22 porturi momeala | 21 FTP, 22 SSH, 23 Telnet, 25 SMTP, 80/5000/8080/7547 web, 139/445 SMB, 443/5001 TLS, 554 RTSP, 1433 MSSQL, 2375 Docker API, 3306 MySQL, 3389 RDP, 5555 ADB, 5900 VNC, 6379 Redis, 9200 Elasticsearch, 27017 MongoDB |
+| Dialoguri reale, nu doar bannere | FTP cere `USER`/`PASS`, Telnet are prompt de login, pagina web e un login DSM, Redis raspunde la `PING`/`INFO`/`CONFIG`, Docker API da o versiune falsa, RTSP cere Digest |
+| Captureaza ce incearca | utilizator + parola (FTP, Telnet, formular web, Basic-Auth, MySQL), comenzile Redis, imaginea pe care vrea sa o porneasca prin Docker, dialectul SMB (un `SMB1` = scaner de ransomware) |
+| Capcana TCP | dupa ce a fost prins, picurare lenta pana la 15 minute (plafon de socketuri, ca sa nu-l doboare nimeni cu conexiuni) |
+| Se anunta in retea | mDNS/Bonjour prin avahi (apare in *Network* din Finder), NetBIOS pe UDP 137 (apare in *Network* din Windows), SSDP/UPnP pe UDP 1900 (`NOTIFY ssdp:alive` la 15 min) |
+| Alerta | webhook catre Home Assistant, cu anti-spam: o alerta per IP la `cooldown` secunde, dar **parolele si exploit-urile au fereastra proprie, scurta**, ca sa nu fie inghitite de alerta de conectare |
+| Jurnal | `/var/log/canary/events.jsonl` - tot, inclusiv ce nu a alertat (`"alerted": false`) |
+| Nume citibile | `hosts.json` (IP -> nume), ca alerta sa spuna "PC Windows din birou", nu "necunoscut" |
+
+Doar biblioteca standard Python 3 + `avahi-daemon` pentru mDNS.
+
+## Containerul (Proxmox LXC)
+
+```bash
+pct create <VMID> local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst \
+  --hostname diskstation --cores 1 --memory 512 --swap 512 \
+  --rootfs local-lvm:3 \
+  --net0 name=eth0,bridge=vmbr0,hwaddr=00:11:32:2A:7B:60,ip=<IP>/24,gw=<GW>,type=veth \
+  --nameserver <DNS> --onboot 1 --unprivileged 1 --ostype debian \
+  --tags 'canary;honeypot' --start 1
+```
+
+`hwaddr` incepe cu `00:11:32` = OUI Synology, deci si in tabelul routerului
+si in ntopng apare ca "Synology Incorporated".
+
+**Nu lasa SSH-ul containerului pornit**: portul 22 e momeala.
+Administrarea se face din gazda, cu `pct exec <VMID> -- ...`:
+
+```bash
+systemctl disable --now ssh.socket ssh.service postfix
+systemctl mask ssh.socket ssh.service
+```
+
+## Instalare
+
+```bash
+apt-get install -y avahi-daemon avahi-utils
+mkdir -p /opt/canary /etc/canary /var/log/canary /etc/avahi/services
+install -m755 canaryd.py            /opt/canary/canaryd.py
+install -m640 config.example.json   /etc/canary/config.json   # completeaza webhook_url + ip
+install -m644 canaryd.service       /etc/systemd/system/canaryd.service
+install -m644 avahi-nas.service     /etc/avahi/services/nas.service
+install -m644 logrotate.canary      /etc/logrotate.d/canary
+systemctl daemon-reload
+systemctl enable --now avahi-daemon canaryd
+```
+
+## Partea de Home Assistant
+
+Automatizare cu declansator `webhook` (`local_only: true`) pe `webhook_id`-ul
+din `webhook_url`. JSON-ul primit:
+
+```json
+{"ts":"...","src_ip":"192.168.1.33","src_host":"PC birou","port":23,
+ "service":"Telnet","persona":"telnet","note":"a incercat login Telnet",
+ "payload":"","creds":[{"user":"root","pass":"xc3511"}],
+ "held":2,"alerted":true,"suppressed":4}
+```
+
+`suppressed` = cate sonde de la acelasi IP au fost inghitite de anti-spam
+de la ultima alerta.
+
+## Capcane de care sa ții cont
+
+- **Te alertezi singur prin SSDP**: dupa ce te anunti, televizoarele, PC-urile
+  Windows si Home Assistant cer `GET /desc.xml`. Acele cereri se scriu in
+  jurnal, dar nu trimit notificare.
+- **Monitorizarea proprie**: daca ai Uptime Kuma / Zabbix care verifica porturi,
+  pune-i IP-ul (sau subreteaua VPN-ului) in `ignore_nets`, altfel suna la fiecare verificare.
+- **Home Assistant va "descoperi" NAS-ul** prin SSDP si va propune integrarea
+  Synology DSM. Ignora sugestia.
+- NetBIOS raspunde **doar** pentru numele propriu, niciodata pentru alte nume:
+  altfel ai deturna rezolvarea de nume in toata reteaua.

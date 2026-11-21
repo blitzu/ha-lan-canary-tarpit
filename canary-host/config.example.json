@@ -1,0 +1,42 @@
+{
+  "webhook_url": "http://<IP_HOME_ASSISTANT>:8123/api/webhook/<ID_WEBHOOK>",
+  "hostname": "DiskStation",
+  "model": "DS920+",
+  "dsm_version": "DSM 7.2-64570 Update 3",
+  "cooldown": 300,
+  "ignore_nets": [
+    "127.0.0.0/8"
+  ],
+  "tarpit_minutes": 15,
+  "drip_seconds": 10,
+  "max_sockets": 128,
+  "log_file": "/var/log/canary/events.jsonl",
+  "hosts_file": "/etc/canary/hosts.json",
+  "advertise_nbns": true,
+  "advertise_ssdp": true,
+  "ip": "",
+  "ports": {
+    "21": "ftp",
+    "22": "ssh",
+    "23": "telnet",
+    "25": "smtp",
+    "80": "http",
+    "139": "smb",
+    "443": "tls",
+    "445": "smb",
+    "554": "rtsp",
+    "1433": "mssql",
+    "2375": "docker",
+    "3306": "mysql",
+    "3389": "rdp",
+    "5000": "http",
+    "5001": "tls",
+    "5555": "adb",
+    "5900": "vnc",
+    "6379": "redis",
+    "7547": "http",
+    "8080": "http",
+    "9200": "elastic",
+    "27017": "mongo"
+  }
+}

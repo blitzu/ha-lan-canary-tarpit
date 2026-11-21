@@ -1,0 +1,8 @@
+/var/log/canary/events.jsonl {
+  weekly
+  rotate 12
+  compress
+  missingok
+  notifempty
+  copytruncate
+}
