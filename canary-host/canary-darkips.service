@@ -1,0 +1,15 @@
+[Unit]
+Description=IP-uri fantoma (dark IPs) pe interfata canary
+After=network-online.target
+Wants=network-online.target
+Before=canaryd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=CANARY_CONFIG=/etc/canary/config.json
+ExecStart=/opt/canary/darkips.sh add
+ExecStop=/opt/canary/darkips.sh del
+
+[Install]
+WantedBy=multi-user.target

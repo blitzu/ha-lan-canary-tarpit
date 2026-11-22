@@ -1,0 +1,15 @@
+[Unit]
+Description=Duce auditul Samba (share-ul momeala) in Home Assistant
+After=smbd.service
+Wants=smbd.service
+
+[Service]
+Type=simple
+Environment=CANARY_CONFIG=/etc/canary/config.json
+ExecStart=/usr/bin/python3 -u /opt/canary/samba-audit-forward.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

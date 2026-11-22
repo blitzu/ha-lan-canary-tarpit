@@ -1,0 +1,15 @@
+[Unit]
+Description=Serviciu de carantina pentru alertele canary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=CARANTINA_CONFIG=/etc/carantina/config.json
+ExecStart=/usr/bin/python3 -u /opt/carantina/carantina.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

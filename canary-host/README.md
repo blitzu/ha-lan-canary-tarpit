@@ -166,6 +166,71 @@ Fara fisier, rezerva e dezactivata si totul merge ca inainte. Test:
 jurnal (erorile sunt curatate inainte de logare), iar rezerva are propriul anti-spam
 pe cheie, ca o cadere lunga de HA sa nu umple Telegramul.
 
+## IP-uri fantoma (dark IPs)
+
+Intr-o retea plata si comutata, traficul dintre doi clienti din acelasi /24 nu trece
+prin router, deci routerul nu-l vede niciodata. Soluția: containerul canary **revendica
+prin ARP** si adresele libere din jurul lui (`dark_ips` in config, adaugate de
+`darkips.sh` prin `canary-darkips.service`). Cu 8 adrese in plus, o scanare a subretelei
+il loveste de 9 ori, iar alerta spune pe care a aterizat: `[IP fantoma 192.168.1.63]`.
+Adresa locala e luata din `sockname` si trecuta prin `contextvars`, ca sa nu fie nevoie
+de un parametru nou in fiecare apel de alerta.
+
+`canary-healthcheck.py` verifica si ca adresele fantoma sunt in continuare pe interfata.
+
+## MikroTik: log, funnel si carantina
+
+```
+# 1. lista adreselor nealocate (completeaza cu ce e liber la tine)
+/ip firewall address-list add list=canary-ip-nefolosite address=192.168.1.33 \
+    comment="Canary: IP nealocat, orice trafic catre el e scanare"
+
+# 2. log pentru sondele catre ele - OBLIGATORIU in mangle prerouting:
+#    in `filter forward` destinatia e deja rescrisa de dst-nat si regula nu mai prinde
+/ip firewall mangle add chain=prerouting action=log log-prefix="DARK-IP" \
+    connection-state=new dst-address-list=canary-ip-nefolosite
+
+# 3. funnel: ce vine din alte subretele catre adrese nealocate ajunge la honeypot
+/ip firewall nat add chain=dstnat action=dst-nat to-addresses=<IP_CANARY> \
+    src-address=!<IP_CANARY> dst-address-list=canary-ip-nefolosite
+
+# 4. carantina: drop pe lista cu timeout, PRIMELE in chain-urile lor, ca sa taie
+#    si conexiunile deja stabilite (altfel regula established-accept le lasa sa curga)
+/ip firewall filter add chain=forward action=drop src-address-list=canary-carantina place-before=1
+/ip firewall filter add chain=input action=drop src-address-list=canary-carantina place-before=1
+```
+
+## Carantina: routerul trage, nu primeste comenzi
+
+Honeypot-ul nu atinge niciodata firewallul - daca l-ar atinge, cine il sparge ti-ar
+putea bloca toata casa. Lanțul e:
+
+1. `canaryd` (sau `cowrie-forward`) **cere** o carantina, dar numai pentru alertele din
+   clasa urgenta (parola incercata, exploit, fisier momeala citit) - o simpla atingere
+   de port nu blocheaza nimic;
+2. `carantina.py`, pe o gazda de incredere (nu pe canary), **valideaza**: doar adrese din
+   subreteaua ta, niciodata infrastructura (lista `protejate`, pune-ti si statia de
+   administrare acolo), maxim 3 simultan, 15 minute;
+3. routerul **citeste** singur `GET /carantina.txt` la 30 s si valideaza din nou in
+   scriptul lui, apoi adauga adresa cu `timeout=15m`.
+
+Asa nu exista nicio parola de router pe vreo gazda si nimeni nu poate comanda firewallul
+direct. Scriptul si schedulerul de pe router au nevoie de `policy=read,write,test,ftp`:
+**fara `ftp`, `/tool fetch` nu poate scrie fisierul si scriptul eseuaza in silentiu**
+(ruleaza-l manual cu `/system script run` ca sa vezi eroarea).
+
+Pe gazda cu `carantina.py` trebuie deschis portul doar pentru router si pentru canary:
+
+```bash
+ufw allow from <IP_ROUTER> to any port 8099 proto tcp comment "carantina: routerul citeste lista"
+ufw allow from <IP_CANARY>  to any port 8099 proto tcp comment "carantina: canary cere carantine"
+```
+
+Ce NU face carantina: intr-o retea plata, dropul de pe router nu opreste traficul dintre
+doi clienti din acelasi /24 (acela e comutat). Taie internetul, accesul la router si
+traficul intre subretele - adica exact exfiltrarea si C2 - dar nu izoleaza aparatul de
+vecinii lui. Pentru asta ar trebui blocare pe MAC in CAPsMAN sau VLAN-uri separate.
+
 ## Capcane de care sa ții cont
 
 - **Te alertezi singur prin SSDP**: dupa ce te anunti, televizoarele, PC-urile
@@ -175,6 +240,13 @@ pe cheie, ca o cadere lunga de HA sa nu umple Telegramul.
   pune-i IP-ul (sau subreteaua VPN-ului) in `ignore_nets`, altfel suna la fiecare verificare.
 - **Home Assistant va "descoperi" NAS-ul** prin SSDP si va propune integrarea
   Synology DSM. Ignora sugestia.
+- **Samba `full_audit`**: `journalctl -o cat` taie eticheta `smbd_audit:`, iar Samba mai
+  pune un câmp (modul de deschidere) intre rezultat si cale - calea se ia de la sfarsit,
+  nu de pe o poziție fixa. Si `for linie in proc.stdout` citeste in blocuri: fara
+  `bufsize=1` + `readline()`, alertele stau in buffer pana se umple 8 KB.
+- **Anti-spam**: cheia trebuie sa fie identica la citire si la scriere (`ip|clasa`).
+  Cu citire pe `ip|clasa` si scriere pe `ip`, fereastra nu se aplica niciodata si o
+  singura unealta care pipaie porturile trimite zeci de notificari.
 - **`userdb.txt` se citeste strict ca ASCII** (`read_text(encoding="ascii")` in
   `src/cowrie/core/auth.py`). Un singur caracter cu diacritice intr-un comentariu si
   fisierul nu se incarca, iar **toate** loginurile sunt respinse, fara nicio eroare

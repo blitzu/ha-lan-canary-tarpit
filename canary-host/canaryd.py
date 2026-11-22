@@ -18,6 +18,8 @@ Doar biblioteca standard Python. Configurare: /etc/canary/config.json
 from __future__ import annotations
 
 import asyncio
+import base64
+import contextvars
 import ipaddress
 import json
 import logging
@@ -94,12 +96,21 @@ SERVICE_NAMES = {
     "elastic": "Elasticsearch",
     "mongo": "MongoDB",
     "smtp": "SMTP (releu deschis)",
+    "token": "Fisier momeala deschis",
 }
+
+# imagine 1x1 transparenta, raspunsul pentru fisierele-far (beacon)
+PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+)
 
 try:  # rezerva pe Telegram, pentru cand HA nu raspunde (opționala)
     import telegram_fallback as telegram
 except Exception:  # noqa: BLE001
     telegram = None
+
+# IP-ul local pe care a intrat conexiunea (poate fi un IP fantoma)
+DST_IP: contextvars.ContextVar[str] = contextvars.ContextVar("dst_ip", default="")
 
 log = logging.getLogger("canaryd")
 
@@ -155,6 +166,15 @@ class Canary:
         self.dsm_version: str = conf["dsm_version"]
         self.webhook: str = conf["webhook_url"]
         self.ignore_nets = conf["_ignore_nets"]
+        self.quarantine_url: str = conf.get("quarantine_url", "")
+        self.quarantine_token: str = ""
+        cale_token = conf.get("quarantine_token_file", "")
+        if self.quarantine_url and cale_token:
+            try:
+                with open(cale_token, "r", encoding="utf-8") as fh:
+                    self.quarantine_token = fh.read().strip()
+            except Exception as err:
+                log.error("nu pot citi tokenul de carantina: %s", err)
         self.log_path = Path(conf["log_file"])
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -234,6 +254,11 @@ class Canary:
         host = await self.resolve(ip)
         service = SERVICE_NAMES.get(persona, persona)
         text = payload if isinstance(payload, str) else printable(payload)
+        # Pe ce IP local a aterizat: daca nu e cel principal, a fost lovit un IP
+        # fantoma, ceea ce inseamna o scanare a subretelei, nu o greseala de adresa.
+        dst = DST_IP.get()
+        if dst and dst != self.conf.get("ip"):
+            note = f"[IP fantoma {dst}] {note}".strip()
         now = time.monotonic()
         # Doua clase de alerte, cu ferestre separate: o simpla atingere de port
         # ("plain") si ceva interesant - parole incercate, exploit ("urgent").
@@ -253,6 +278,7 @@ class Canary:
             "service": service,
             "persona": persona,
             "note": note,
+            "dst_ip": dst or self.conf.get("ip", ""),
             "payload": text,
             "creds": creds or [],
             "held": len(self.held),
@@ -278,9 +304,16 @@ class Canary:
             return
 
         record["suppressed"] = self._suppressed.pop(ip, 0)
-        self._last_alert[ip] = now
+        # ATENTIE: cheia trebuie sa fie aceeasi la citire si la scriere (ip|clasa).
+        # Cand aici scria doar `ip`, fereastra de anti-spam nu se aplica niciodata
+        # si o singura unealta care pipaie porturile trimitea zeci de notificari.
+        self._last_alert[key] = now
         self.stats["alerte"] += 1
         await self.send_webhook(record)
+        # Carantina se cere doar pentru clasa "urgenta" (parola incercata, exploit,
+        # fisier citit) - o simpla atingere de port nu merita blocat un aparat.
+        if klass == "urgent":
+            await self.cere_carantina(ip, note)
 
     async def send_webhook(self, record: dict) -> None:
         if not self.webhook:
@@ -330,6 +363,39 @@ class Canary:
             ),
         )
         log.warning("rezerva Telegram: %s (%s)", "trimis" if ok else "netrimis", motiv)
+
+    async def cere_carantina(self, ip: str, motiv: str) -> None:
+        """Cere serviciului de pe CT117 sa puna IP-ul in carantina.
+
+        Honeypot-ul nu atinge niciodata firewallul: doar *cere*. Validarea,
+        lista protejata si plafonul sunt in afara lui, iar routerul isi citeste
+        singur lista si o valideaza din nou.
+        """
+        if not self.quarantine_url:
+            return
+        corp = json.dumps(
+            {"ip": ip, "motiv": motiv[:200], "token": self.quarantine_token}
+        ).encode()
+
+        def _post() -> tuple[int, str]:
+            req = urllib.request.Request(
+                self.quarantine_url,
+                data=corp,
+                headers={"Content-Type": "application/json", "User-Agent": "canaryd/1.0"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    return resp.status, resp.read(200).decode("utf-8", "replace").strip()
+            except urllib.error.HTTPError as err:
+                return err.code, err.read(200).decode("utf-8", "replace").strip()
+
+        try:
+            loop = asyncio.get_running_loop()
+            status, raspuns = await loop.run_in_executor(None, _post)
+            log.warning("carantina pentru %s: HTTP %s - %s", ip, status, raspuns)
+        except Exception as err:
+            log.error("nu am putut cere carantina pentru %s: %s", ip, err)
 
     # ---------------- capcana ----------------
 
@@ -474,6 +540,23 @@ class Canary:
         agent = headers.get("user-agent", "")
 
         creds = self.extract_http_creds(path, body, headers)
+
+        # /token/<nume> = un fisier momeala (docx, html, .url) a fost DESCHIS.
+        # Nu e o scanare de porturi: cineva a umblat prin fisierele furate.
+        if path.startswith("/token/"):
+            nume = path.split("/token/", 1)[1].split("?")[0][:60]
+            await self.alert(
+                ip,
+                port,
+                "token",
+                f"FISIER MOMEALA DESCHIS: {nume}",
+                agent[:120],
+                urgent=True,
+            )
+            self.http_reply(writer, "200 OK", "image/png", PIXEL_PNG)
+            await writer.drain()
+            return
+
         note = f"{method} {path[:60]}"
         if agent:
             note += f" [{agent[:40]}]"
@@ -797,6 +880,9 @@ class Canary:
             ip = peer[0] if peer else "necunoscut"
             if ip.startswith("::ffff:"):
                 ip = ip[7:]
+            local = writer.get_extra_info("sockname")
+            DST_IP.set(local[0] if local else "")
+
             try:
                 if self.ignored(ip):
                     return

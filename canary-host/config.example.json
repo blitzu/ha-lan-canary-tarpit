@@ -19,9 +19,7 @@
     "21": "ftp",
     "25": "smtp",
     "80": "http",
-    "139": "smb",
     "443": "tls",
-    "445": "smb",
     "554": "rtsp",
     "1433": "mssql",
     "2375": "docker",
@@ -38,5 +36,13 @@
     "27017": "mongo"
   },
   "heartbeat_url": "http://<IP_HOME_ASSISTANT>:8123/api/webhook/<ID_WEBHOOK_PULS>",
-  "telegram_file": "/etc/canary/telegram.json"
+  "telegram_file": "/etc/canary/telegram.json",
+  "dark_ips": [
+    "192.168.1.61",
+    "192.168.1.62",
+    "192.168.1.63"
+  ],
+  "dev": "eth0",
+  "quarantine_url": "http://<IP_GAZDA_DE_INCREDERE>:8099/carantina",
+  "quarantine_token_file": "/etc/canary/carantina-token"
 }

@@ -90,6 +90,22 @@ def main() -> int:
     porturi = {int(p): n for p, n in c.get("ports", {}).items()}
 
     servicii_moarte = [s for s in SERVICII if not serviciu_activ(s)]
+
+    # IP-urile fantoma trebuie sa fie in continuare pe interfata
+    fantome_lipsa = []
+    dark = c.get("dark_ips", [])
+    if dark:
+        try:
+            out = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show", "dev", c.get("dev", "eth0")],
+                capture_output=True, text=True, timeout=10,
+            ).stdout
+            prezente = {w.split("/")[0] for w in out.split() if w.count(".") == 3}
+            fantome_lipsa = [ip for ip in dark if ip not in prezente]
+        except Exception:
+            fantome_lipsa = []
+    if fantome_lipsa:
+        servicii_moarte.append("ip-uri fantoma lipsa: " + ",".join(fantome_lipsa))
     porturi_moarte = [p for p in sorted(porturi) if not port_viu(p)]
     porturi_moarte += [
         p for p, semn in COWRIE_PORTS.items() if not port_viu(p, semn)
@@ -105,6 +121,7 @@ def main() -> int:
         "porturi_total": len(porturi) + len(COWRIE_PORTS),
         "porturi_moarte": porturi_moarte,
         "servicii_moarte": servicii_moarte,
+        "ip_uri_fantoma": len(c.get("dark_ips", [])),
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
     print(json.dumps(puls, ensure_ascii=False))
